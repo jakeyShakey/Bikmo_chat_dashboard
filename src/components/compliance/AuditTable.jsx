@@ -73,7 +73,7 @@ export function AuditTable({ audits }) {
                   <StatusBadge status={row.status} />
                 </td>
                 <td style={{ padding: "10px 16px", color: "#c0c4d0", fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "—"}
+                  {row.confidence != null ? `${Math.round(row.confidence * 10)}%` : "—"}
                 </td>
                 <td style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>

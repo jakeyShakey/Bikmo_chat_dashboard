@@ -42,7 +42,8 @@ Deno.serve(async (req) => {
         from, to
       ),
       applyDateFilter(
-        supabase.from("compliance_audits").select("status, confidence, flags, audited_at, conversation_id"),
+        // "status:compliant" aliases the actual column name "compliant" as "status"
+        supabase.from("compliance_audits").select("status:compliant, confidence, flags, audited_at, conversation_id"),
         from, to, "audited_at"
       ),
     ]);
@@ -65,11 +66,11 @@ Deno.serve(async (req) => {
     const csat = fbArr.length > 0 ? Math.round((positive / (positive + negative)) * 100) : null;
     const feedbackRate = totalConversations > 0 ? Math.round((fbArr.length / totalConversations) * 100) : 0;
 
-    // Compliance
+    // Compliance — confidence is a 1–10 integer, multiply by 10 to get 0–100%
     const compliant = audits.filter(a => a.status === "yes").length;
     const complianceRate = audits.length > 0 ? Math.round((compliant / audits.length) * 100) : null;
     const avgConfidence = audits.length > 0
-      ? Math.round((audits.reduce((s, a) => s + (a.confidence ?? 0), 0) / audits.length) * 100)
+      ? Math.round((audits.reduce((s, a) => s + (a.confidence ?? 0), 0) / audits.length) * 10)
       : null;
 
     // Convos by day
@@ -118,18 +119,22 @@ Deno.serve(async (req) => {
 
   // ── COMPLIANCE ───────────────────────────────────────────────────────────────
   if (endpoint === "compliance") {
-    const { data: audits } = await applyDateFilter(
-      supabase.from("compliance_audits").select("id, conversation_id, status, confidence, flags, reasoning, audited_at"),
+    const { data: audits, error: auditError } = await applyDateFilter(
+      // "status:compliant" aliases the actual column name "compliant" as "status"
+      supabase.from("compliance_audits").select("id, conversation_id, status:compliant, confidence, flags, reasoning, audited_at"),
       from, to, "audited_at"
     );
+
+    if (auditError) return json({ error: auditError.message });
 
     const rows = audits ?? [];
     const total = rows.length;
     const compliant = rows.filter(a => a.status === "yes").length;
     const nonCompliant = rows.filter(a => a.status === "no").length;
     const review = rows.filter(a => a.status === "review").length;
+    // confidence is a 1–10 integer, multiply by 10 to get 0–100%
     const avgConfidence = total > 0
-      ? Math.round((rows.reduce((s, a) => s + (a.confidence ?? 0), 0) / total) * 100)
+      ? Math.round((rows.reduce((s, a) => s + (a.confidence ?? 0), 0) / total) * 10)
       : null;
 
     const summary = {
@@ -169,7 +174,7 @@ Deno.serve(async (req) => {
 
   // ── CONVERSATIONS (new, with compliance + feedback join) ──────────────────
   if (endpoint === "conversations") {
-    const [convoRes, feedbackRes, auditRes] = await Promise.all([
+    const [convoRes, feedbackRes] = await Promise.all([
       applyDateFilter(
         supabase.from("chat_responses").select("id, conversation_id, messages_processed, created_at"),
         from, to
@@ -178,15 +183,23 @@ Deno.serve(async (req) => {
         supabase.from("feedback_responses").select("feedback, created_at, conversation_id"),
         from, to
       ),
-      applyDateFilter(
-        supabase.from("compliance_audits").select("conversation_id, status, confidence, flags, audited_at"),
-        from, to, "audited_at"
-      ),
     ]);
 
     const convos = convoRes.data ?? [];
     const feedback = feedbackRes.data ?? [];
-    const audits = auditRes.data ?? [];
+
+    // Fetch compliance audits scoped to the matched conversation_ids so that
+    // audits are never excluded just because audited_at falls outside the
+    // selected date window (the date window is already applied to conversations).
+    const convIds = convos.map((c: any) => c.conversation_id).filter(Boolean);
+    const { data: auditRows } = convIds.length > 0
+      ? await supabase
+          .from("compliance_audits")
+          // "status:compliant" aliases the actual column name "compliant" as "status"
+          .select("conversation_id, status:compliant, confidence, flags, audited_at")
+          .in("conversation_id", convIds)
+      : { data: [] };
+    const audits = auditRows ?? [];
 
     // Resolve latest feedback per convo
     const fbMap: Record<string, any> = {};

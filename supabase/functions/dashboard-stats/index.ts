@@ -172,11 +172,55 @@ Deno.serve(async (req) => {
     return json({ summary, auditsByDay, flagFrequency, audits: sortedAudits });
   }
 
+  // ── ESCALATIONS ──────────────────────────────────────────────────────────────
+  if (endpoint === "escalations") {
+    const [escalationRes, convoCountRes] = await Promise.all([
+      applyDateFilter(
+        supabase.from("escalations").select("id, conversation_id, zendesk_ticket_id, escalated_at, customer_name, customer_email, issue_description, message_count_at_escalation, previous_messages"),
+        from, to, "escalated_at"
+      ),
+      applyDateFilter(
+        supabase.from("chat_responses").select("id", { count: "exact", head: true }),
+        from, to
+      ),
+    ]);
+
+    const rows = escalationRes.data ?? [];
+    const totalConversations = convoCountRes.count ?? 0;
+    const totalEscalations = rows.length;
+    const escalationRate = totalConversations > 0
+      ? Math.round((totalEscalations / totalConversations) * 100 * 10) / 10
+      : null;
+
+    const msgCounts = rows.filter(r => r.message_count_at_escalation != null).map(r => r.message_count_at_escalation);
+    const avgMessagesAtEscalation = msgCounts.length > 0
+      ? Math.round(msgCounts.reduce((s, n) => s + n, 0) / msgCounts.length)
+      : null;
+
+    const uniqueCustomers = new Set(rows.map(r => r.customer_email).filter(Boolean)).size;
+
+    // Escalations by day
+    const dayMap: Record<string, number> = {};
+    rows.forEach(r => {
+      const day = r.escalated_at?.slice(0, 10);
+      if (day) dayMap[day] = (dayMap[day] || 0) + 1;
+    });
+    const escalationsByDay = Object.entries(dayMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+
+    const sortedEscalations = [...rows].sort((a, b) => new Date(b.escalated_at).getTime() - new Date(a.escalated_at).getTime());
+
+    return json({
+      summary: { totalEscalations, escalationRate, avgMessagesAtEscalation, uniqueCustomers },
+      escalationsByDay,
+      escalations: sortedEscalations,
+    });
+  }
+
   // ── CONVERSATIONS (new, with compliance + feedback join) ──────────────────
   if (endpoint === "conversations") {
     const [convoRes, feedbackRes] = await Promise.all([
       applyDateFilter(
-        supabase.from("chat_responses").select("id, conversation_id, messages_processed, created_at"),
+        supabase.from("chat_responses").select("id, conversation_id, messages_processed, created_at, escalated"),
         from, to
       ).order("created_at", { ascending: false }),
       applyDateFilter(
@@ -221,6 +265,7 @@ Deno.serve(async (req) => {
       compliance_confidence: auditMap[c.conversation_id]?.confidence ?? null,
       compliance_flags: auditMap[c.conversation_id]?.flags ?? [],
       feedback: fbMap[c.conversation_id]?.feedback ?? null,
+      escalated: c.escalated ?? false,
     }));
 
     return json(result);

@@ -5,6 +5,7 @@ const TABS = [
   { id: "compliance", label: "Compliance" },
   { id: "conversations", label: "Conversations" },
   { id: "feedback", label: "Feedback" },
+  { id: "escalations", label: "Escalations" },
 ];
 
 export function TabNav() {

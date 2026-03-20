@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ChevronRight, ThumbsUp, ThumbsDown, AlertTriangle } from "lucide-react";
 import { StatusBadge } from "../common/StatusBadge.jsx";
 import { Pagination } from "../common/Pagination.jsx";
 import { EmptyState } from "../common/EmptyState.jsx";
@@ -33,11 +33,15 @@ export function ConversationTable({ rows }) {
           >
             <ChevronRight size={14} color="#555" style={{ transform: expandedId === row.id ? "rotate(90deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }} />
             <span style={{ color: "#8a8f9e", fontSize: 11, fontFamily: "'DM Mono', monospace", flexShrink: 0 }}>{fmtFull(row.created_at)}</span>
+            <span style={{ color: "#555", fontSize: 11, fontFamily: "'DM Mono', monospace", flexShrink: 0 }} title={row.conversation_id}>
+              {row.conversation_id ? row.conversation_id.slice(0, 12) + "…" : "—"}
+            </span>
             <span style={{ color: "#c0c4d0", fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {row.messages_processed?.slice(0, 80) || "No transcript"}…
             </span>
             <span style={{ color: "#555", fontSize: 11, flexShrink: 0 }}>{estimateLines(row.messages_processed)} lines</span>
             {row.compliance_status ? <StatusBadge status={row.compliance_status} /> : <span style={{ color: "#444", fontSize: 10 }}>no audit</span>}
+            {row.escalated === true ? <AlertTriangle size={14} color="#f97316" title="Escalated" /> : <span style={{ width: 14, flexShrink: 0 }} />}
             {row.feedback === true ? <ThumbsUp size={14} color="#4ade80" /> :
              row.feedback === false ? <ThumbsDown size={14} color="#f87171" /> :
              <span style={{ color: "#444", fontSize: 10 }}>—</span>}

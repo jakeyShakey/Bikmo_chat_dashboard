@@ -6,6 +6,7 @@ import { OverviewPage } from "./pages/OverviewPage.jsx";
 import { CompliancePage } from "./pages/CompliancePage.jsx";
 import { ConversationsPage } from "./pages/ConversationsPage.jsx";
 import { FeedbackPage } from "./pages/FeedbackPage.jsx";
+import { EscalationsPage } from "./pages/EscalationsPage.jsx";
 
 function AppShell() {
   const { activeTab } = useDashboard();
@@ -21,6 +22,7 @@ function AppShell() {
         {activeTab === "compliance" && <CompliancePage />}
         {activeTab === "conversations" && <ConversationsPage />}
         {activeTab === "feedback" && <FeedbackPage />}
+        {activeTab === "escalations" && <EscalationsPage />}
       </div>
     </div>
   );

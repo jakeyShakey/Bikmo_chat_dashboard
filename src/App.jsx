@@ -1,4 +1,5 @@
 import { DashboardProvider, useDashboard } from "./context/DashboardContext.jsx";
+import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import { Header } from "./components/layout/Header.jsx";
 import { TabNav } from "./components/layout/TabNav.jsx";
 import { DateRangeSelector } from "./components/layout/DateRangeSelector.jsx";
@@ -7,6 +8,7 @@ import { CompliancePage } from "./pages/CompliancePage.jsx";
 import { ConversationsPage } from "./pages/ConversationsPage.jsx";
 import { FeedbackPage } from "./pages/FeedbackPage.jsx";
 import { EscalationsPage } from "./pages/EscalationsPage.jsx";
+import { LoginPage } from "./pages/LoginPage.jsx";
 
 function AppShell() {
   const { activeTab } = useDashboard();
@@ -28,10 +30,30 @@ function AppShell() {
   );
 }
 
-export default function App() {
+function AuthGate() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0e1018", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: "#6b7280", fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!session) return <LoginPage />;
+
   return (
     <DashboardProvider>
       <AppShell />
     </DashboardProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }

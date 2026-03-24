@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
-import { EDGE_FN, SUPABASE_ANON_KEY } from "../config.js";
+import { EDGE_FN } from "../config.js";
 import { useDashboard } from "../context/DashboardContext.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export function useFeedbackData() {
   const { dateRange, refreshToken, setLastUpdated } = useDashboard();
+  const { session } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!session) return;
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ endpoint: "feedback" });
@@ -16,7 +19,7 @@ export function useFeedbackData() {
     if (dateRange.to) params.set("to", dateRange.to);
 
     fetch(`${EDGE_FN}?${params}`, {
-      headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      headers: { Authorization: `Bearer ${session.access_token}` },
     })
       .then(r => r.json())
       .then(d => {
@@ -25,7 +28,7 @@ export function useFeedbackData() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [dateRange.from, dateRange.to, refreshToken]);
+  }, [dateRange.from, dateRange.to, refreshToken, session]);
 
   return { data, loading, error };
 }

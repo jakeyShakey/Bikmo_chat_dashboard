@@ -29,13 +29,19 @@ supabase functions deploy dashboard-stats
 ```
 src/
   config.js                      # Supabase anon key + edge function URL + date presets
-  App.jsx                        # Root shell — renders layout + active tab page
-  context/DashboardContext.jsx   # Global state: active tab, date range, refresh token
-  hooks/use*Data.js              # One data-fetching hook per tab (5 total)
-  pages/                         # One page component per tab (Overview, Compliance, Conversations, Feedback, Escalations)
+  App.jsx                        # Root shell — auth gate + renders layout + active tab page
+  context/
+    DashboardContext.jsx         # Global state: active tab, date range, refresh token
+    AuthContext.jsx              # Auth state: session, user, loading, signOut
+  hooks/
+    use*Data.js                  # One data-fetching hook per tab (5 total)
+    useSupabaseClient.js         # Singleton Supabase client (createClient called once)
+  pages/
+    LoginPage.jsx                # Google OAuth sign-in page
+    (other pages)                # One page component per tab
   components/
     common/                      # StatCard, ChartCard, StatusBadge, LoadingSkeleton, EmptyState, Pagination, Section
-    layout/                      # Header, TabNav, DateRangeSelector
+    layout/                      # Header, TabNav, DateRangeSelector, UserMenu
     overview|compliance|conversations|feedback|escalations/  # Feature-specific components
   utils/                         # formatters.js, grouping helpers
 supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoints
@@ -43,10 +49,20 @@ supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoi
 
 ## Architecture & Data Flow
 
-1. `DashboardContext` owns: `activeTab`, `dateRange` (from/to strings), `refreshToken` (increment to force re-fetch), `lastUpdated`
-2. Each page calls its own `use*Data()` hook → fetches from the single edge function with `?endpoint=<name>&from=<date>&to=<date>`
-3. Edge function queries Postgres and returns aggregated JSON — no raw table access from the frontend
-4. All chart data uses `recharts` — wrap charts in `<ChartCard>`, stats in `<StatCard>`
+1. `AuthContext` wraps the entire app — gates access via `AuthGate` in `App.jsx`; unauthenticated users see `LoginPage`
+2. `DashboardContext` owns: `activeTab`, `dateRange` (from/to strings), `refreshToken` (increment to force re-fetch), `lastUpdated`
+3. Each page calls its own `use*Data()` hook → fetches from the single edge function with `?endpoint=<name>&from=<date>&to=<date>`, passing `session.access_token` in the `Authorization` header
+4. Edge function verifies the JWT via `adminClient.auth.getUser(token)` before processing any request
+5. Edge function queries Postgres and returns aggregated JSON — no raw table access from the frontend
+6. All chart data uses `recharts` — wrap charts in `<ChartCard>`, stats in `<StatCard>`
+
+## Authentication
+
+- **Provider**: Google OAuth via Supabase Auth — restricted to `@bikmo.com` accounts
+- **Access control**: A `Before User Created` hook runs a Postgres function (`public.hook_restrict_signup_by_email_domain`) that blocks non-bikmo.com signups at the Auth level
+- **New users**: Must be invited or sign in with a `@bikmo.com` Google account — no self-registration for other domains
+- **Session**: Stored in localStorage by the Supabase client. `AuthContext` uses `onAuthStateChange` as the sole source of truth for session state (do not use `getSession()` on mount — causes a race condition with the OAuth callback hash)
+- **Edge function auth**: JWT verification is handled **in code** via `adminClient.auth.getUser(token)`. The Supabase platform-level "Verify JWT" toggle on the function must be **OFF** — if both are enabled, the platform rejects the request before the function code runs
 
 ## Database Tables
 
@@ -55,6 +71,13 @@ supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoi
 - `compliance_audits` — AI compliance checks (`compliant` column aliased as `status` in queries, `confidence` 1–10 int, `flags[]`, `reasoning`, `audited_at`)
 - `escalations` — escalated convos with Zendesk data (`zendesk_ticket_id`, `customer_name`, `customer_email`, `message_count_at_escalation`, `escalated_at`)
 
+## Security Model
+
+- **Anon key** (`src/config.js`): Public client key, safe to expose in frontend. Used only to initialise the Supabase client for auth.
+- **Service role key**: Never in the frontend. Only used inside the edge function via `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`. Bypasses RLS — kept server-side only.
+- **Edge function**: Validates every request with `adminClient.auth.getUser(token)`. Unauthenticated or invalid requests get a 401 before any data is queried.
+- **New sensitive config**: Use `.env.local` and never commit. Do not add service role keys or other secrets to `src/config.js`.
+
 ## Critical Gotchas
 
 - **`compliance_audits.compliant` column is aliased**: All Supabase queries must use `select("status:compliant, ...")` — the column is named `compliant` in Postgres but exposed as `status` everywhere in the app. Never query it as `compliant` from the frontend.
@@ -62,7 +85,10 @@ supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoi
 - **Date filter for compliance audits uses `audited_at`, not `created_at`**: Always pass `field = "audited_at"` to `applyDateFilter()` for `compliance_audits`. Other tables use the default `created_at`.
 - **Latest record wins**: Feedback and compliance audits are resolved per-conversation by taking the most recent entry (`created_at` / `audited_at`). There can be multiple rows per `conversation_id`.
 - **Vite is beta (8.0.0-beta.13)**: Occasionally has rough edges. If build behaviour seems odd, check for Vite 8 beta-specific issues before assuming app bugs.
-- **Supabase anon key is in `src/config.js`**: This is intentional — it's a public client key with row-level security. Do not move it to `.env` unless also adding dotenv support. If adding new sensitive config (service role keys etc.), use `.env.local` and never commit.
+- **Supabase anon key is in `src/config.js`**: This is intentional — it's a public client key. Do not move it to `.env` unless also adding dotenv support. If adding new sensitive config (service role keys etc.), use `.env.local` and never commit.
+- **Supabase tokens are ES256, not HS256**: Newer Supabase projects issue JWTs signed with ES256 (elliptic curve). Do not attempt to verify them with `SUPABASE_JWT_SECRET` (HS256). Always verify via `adminClient.auth.getUser(token)` — this calls the Auth API directly and handles ES256 correctly.
+- **Edge function "Verify JWT" platform toggle must be OFF**: The Supabase dashboard has a per-function "Verify JWT" toggle (Edge Functions → function → Settings). This must be disabled when doing auth verification in code — if both are on, Supabase rejects the request at the platform level before your code runs, resulting in a 401 that looks like your code's fault but isn't.
+- **`onAuthStateChange` not `getSession()` on mount**: Using `getSession()` then `onAuthStateChange` separately creates a race condition — `loading` gets set to `false` before the OAuth callback hash is processed, briefly rendering the login page and losing the session. Use `onAuthStateChange` alone; it fires immediately with the current session on mount.
 
 ## Coding Conventions
 

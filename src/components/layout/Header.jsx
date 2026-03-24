@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { useDashboard } from "../../context/DashboardContext.jsx";
+import { UserMenu } from "./UserMenu.jsx";
 
 export function Header() {
   const { lastUpdated, refresh, refreshToken } = useDashboard();
@@ -28,6 +29,7 @@ export function Header() {
           <RefreshCw size={12} />
           Refresh
         </button>
+        <UserMenu />
       </div>
     </div>
   );

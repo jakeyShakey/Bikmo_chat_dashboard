@@ -20,10 +20,22 @@ function applyDateFilter(query: any, from: string | null, to: string | null, fie
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const supabase = createClient(
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  const adminClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+  const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  }
+
+  const supabase = adminClient;
 
   const url = new URL(req.url);
   const endpoint = url.searchParams.get("endpoint");

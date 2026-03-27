@@ -1,0 +1,26 @@
+<h2>Where does the conversation data come from?</h2>
+<p class="subtitle">Each compliance audit is linked to a <strong>conversation_id</strong>. We need to know where to fetch the conversation messages from in order to show them in the expanded audit row.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Stored in Supabase</h3>
+      <p>The conversation messages are stored in a Supabase table (e.g. <code>chat_responses</code> or a <code>messages</code> table). We can query them directly via the edge function.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Stored in a third-party service</h3>
+      <p>Conversations are stored in an external service (e.g. Intercom, Zendesk, a CRM). We'd need to fetch them via that service's API, possibly using the <code>conversation_id</code> as a key.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Stored in the compliance_audits table itself</h3>
+      <p>The full conversation text is already saved as a column in <code>compliance_audits</code> (e.g. a <code>messages</code> or <code>conversation</code> JSON/text column) — just not currently displayed.</p>
+    </div>
+  </div>
+</div>

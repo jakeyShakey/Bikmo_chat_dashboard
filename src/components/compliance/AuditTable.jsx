@@ -40,6 +40,7 @@ export function AuditTable({ audits }) {
         {
           verdict: a.reviewer_verdict ?? null,
           notes: a.reviewer_notes ?? "",
+          saved: a.reviewer_verdict != null, // true only when persisted to DB
           saving: false,
           error: null,
           editing: false,
@@ -61,6 +62,7 @@ export function AuditTable({ audits }) {
           next[a.id] = {
             verdict: a.reviewer_verdict ?? null,
             notes: a.reviewer_notes ?? "",
+            saved: a.reviewer_verdict != null,
             saving: false,
             error: null,
             editing: false,
@@ -198,8 +200,8 @@ export function AuditTable({ audits }) {
 
                     {/* ── Feedback bar ── */}
                     {(() => {
-                      const fb = feedbackState[row.id] ?? { verdict: null, notes: "", saving: false, error: null, editing: false };
-                      const isReviewed = fb.verdict != null && !fb.editing;
+                      const fb = feedbackState[row.id] ?? { verdict: null, notes: "", saved: false, saving: false, error: null, editing: false };
+                      const isReviewed = fb.saved && !fb.editing;
 
                       const setFb = (patch) => setFeedbackState(prev => ({
                         ...prev,
@@ -212,7 +214,7 @@ export function AuditTable({ audits }) {
                         setFb({ saving: true, error: null });
                         try {
                           await submitFeedback(row.id, currentFb.verdict, currentFb.notes, session?.access_token);
-                          setFb({ saving: false, editing: false });
+                          setFb({ saving: false, saved: true, editing: false });
                         } catch (err) {
                           setFb({ saving: false, error: err.message });
                         }

@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
   if (endpoint === "compliance") {
     const { data: audits, error: auditError } = await applyDateFilter(
       // "status:compliant" aliases the actual column name "compliant" as "status"
-      supabase.from("compliance_audits").select("id, conversation_id, status:compliant, confidence, flags, reasoning, audited_at"),
+      supabase.from("compliance_audits").select("id, conversation_id, status:compliant, confidence, flags, reasoning, audited_at, reviewer_verdict, reviewer_notes, reviewed_by, reviewed_at"),
       from, to, "audited_at"
     );
 
@@ -178,8 +178,28 @@ Deno.serve(async (req) => {
       .sort(([, a], [, b]) => b - a)
       .map(([flag, count]) => ({ flag, count }));
 
-    // Full audit list sorted desc
-    const sortedAudits = [...rows].sort((a, b) => new Date(b.audited_at).getTime() - new Date(a.audited_at).getTime());
+    // Fetch conversation text for each audit (latest-wins per conversation_id)
+    const convIds = rows.map((r: any) => r.conversation_id).filter(Boolean);
+    const { data: convoRows } = convIds.length > 0
+      ? await supabase
+          .from("chat_responses")
+          .select("conversation_id, messages_processed")
+          .in("conversation_id", convIds)
+          .order("created_at", { ascending: false })
+      : { data: [] };
+
+    // latest-wins: first occurrence wins because results are ordered newest-first
+    const convoMap: Record<string, string | null> = {};
+    (convoRows ?? []).forEach((c: any) => {
+      if (!(c.conversation_id in convoMap)) {
+        convoMap[c.conversation_id] = c.messages_processed ?? null;
+      }
+    });
+
+    // Full audit list sorted desc, with conversation text merged in
+    const sortedAudits = [...rows]
+      .sort((a: any, b: any) => new Date(b.audited_at).getTime() - new Date(a.audited_at).getTime())
+      .map((a: any) => ({ ...a, messages_processed: convoMap[a.conversation_id] ?? null }));
 
     return json({ summary, auditsByDay, flagFrequency, audits: sortedAudits });
   }
@@ -319,6 +339,44 @@ Deno.serve(async (req) => {
       feedbackByDay,
       rows: all,
     });
+  }
+
+  // ── AUDIT FEEDBACK ───────────────────────────────────────────────────────────
+  if (endpoint === "audit-feedback") {
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
+    }
+
+    const body = await req.json().catch(() => null);
+    const { audit_id, verdict, notes } = body ?? {};
+
+    if (!audit_id || !["agree", "disagree"].includes(verdict)) {
+      return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers: corsHeaders });
+    }
+
+    // Server-side length guard (matches frontend maxLength=1000)
+    if (notes && notes.length > 1000) {
+      return new Response(JSON.stringify({ error: "Notes too long (max 1000 chars)" }), { status: 400, headers: corsHeaders });
+    }
+
+    // compliance_audits.id is a UUID — no coercion needed
+    const reviewedBy = user.email ?? user.id; // fallback to user id if email absent
+
+    const { error: updateError } = await supabase
+      .from("compliance_audits")
+      .update({
+        reviewer_verdict: verdict,
+        reviewer_notes: notes ?? null,
+        reviewed_by: reviewedBy,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", audit_id);
+
+    if (updateError) {
+      return new Response(JSON.stringify({ error: updateError.message }), { status: 500, headers: corsHeaders });
+    }
+
+    return json({ ok: true });
   }
 
   // ── LEGACY ALIASES ───────────────────────────────────────────────────────────

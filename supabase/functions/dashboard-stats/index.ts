@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => null);
     const { audit_id, verdict, notes } = body ?? {};
 
-    if (!audit_id || !["agree", "disagree"].includes(verdict)) {
+    if (!audit_id || !["agree", "disagree", "flag"].includes(verdict)) {
       return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers: corsHeaders });
     }
 

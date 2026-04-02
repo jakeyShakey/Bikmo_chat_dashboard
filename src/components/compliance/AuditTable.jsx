@@ -149,15 +149,20 @@ export function AuditTable({ audits }) {
                 </td>
                 <td style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)" }} onClick={e => e.stopPropagation()}>
                   {(() => {
-                    const v = feedbackState[row.id]?.verdict ?? null;
-                    if (v === "agree") return (
-                      <span style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "2px 8px", color: "#22c55e", fontSize: 10, whiteSpace: "nowrap" }}>Agreed ✓</span>
-                    );
-                    if (v === "disagree") return (
-                      <span style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10, padding: "2px 8px", color: "#f87171", fontSize: 10, whiteSpace: "nowrap" }}>Disagreed ✗</span>
-                    );
+                    const fb = feedbackState[row.id];
+                    const chipVerdict = fb?.saved && !fb?.editing ? fb.verdict : null;
+                    let chip;
+                    if (chipVerdict === "agree") {
+                      chip = { label: "Agreed ✓", color: "#22c55e", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)" };
+                    } else if (chipVerdict === "disagree") {
+                      chip = { label: "Disagreed ✗", color: "#f87171", bg: "rgba(248,113,113,0.1)", border: "rgba(248,113,113,0.2)" };
+                    } else if (chipVerdict === "flag") {
+                      chip = { label: "Flagged ⚑", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.3)" };
+                    } else {
+                      chip = { label: "Pending", color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.2)" };
+                    }
                     return (
-                      <span style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "2px 8px", color: "#6b7280", fontSize: 10, whiteSpace: "nowrap" }}>Pending</span>
+                      <span style={{ background: chip.bg, border: `1px solid ${chip.border}`, borderRadius: 10, padding: "2px 8px", color: chip.color, fontSize: 10, whiteSpace: "nowrap" }}>{chip.label}</span>
                     );
                   })()}
                 </td>
@@ -238,15 +243,17 @@ export function AuditTable({ audits }) {
                           <div style={barStyle}>
                             <p style={labelStyle}>Your verdict</p>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                              <span style={{
-                                background: fb.verdict === "agree" ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.1)",
-                                border: `1px solid ${fb.verdict === "agree" ? "rgba(34,197,94,0.3)" : "rgba(248,113,113,0.2)"}`,
-                                borderRadius: 8, padding: "4px 12px",
-                                color: fb.verdict === "agree" ? "#22c55e" : "#f87171",
-                                fontSize: 12, fontWeight: 500,
-                              }}>
-                                {fb.verdict === "agree" ? "✓ Agreed" : "✗ Disagreed"}
-                              </span>
+                              {(() => {
+                                const verdictColour = fb.verdict === "agree" ? "#22c55e" : fb.verdict === "disagree" ? "#f87171" : fb.verdict === "flag" ? "#f59e0b" : "#6b7280";
+                                const verdictBg = fb.verdict === "agree" ? "rgba(34,197,94,0.12)" : fb.verdict === "disagree" ? "rgba(248,113,113,0.1)" : fb.verdict === "flag" ? "rgba(245,158,11,0.12)" : "rgba(107,114,128,0.1)";
+                                const verdictBorder = fb.verdict === "agree" ? "rgba(34,197,94,0.3)" : fb.verdict === "disagree" ? "rgba(248,113,113,0.2)" : fb.verdict === "flag" ? "rgba(245,158,11,0.3)" : "rgba(107,114,128,0.2)";
+                                const verdictText = fb.verdict === "agree" ? "✓ Agreed" : fb.verdict === "disagree" ? "✗ Disagreed" : fb.verdict === "flag" ? "⚑ Flag for Improvement" : `? ${fb.verdict}`;
+                                return (
+                                  <span style={{ background: verdictBg, border: `1px solid ${verdictBorder}`, borderRadius: 8, padding: "4px 12px", color: verdictColour, fontSize: 12, fontWeight: 500 }}>
+                                    {verdictText}
+                                  </span>
+                                );
+                              })()}
                               {fb.notes && (
                                 <span style={{ color: "#c0c4d0", fontSize: 12 }}>"{fb.notes}"</span>
                               )}
@@ -268,69 +275,88 @@ export function AuditTable({ audits }) {
                       return (
                         <div style={barStyle}>
                           <p style={labelStyle}>Your verdict</p>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <button
-                              disabled={fb.saving}
-                              onClick={() => setFb({ verdict: fb.verdict === "agree" ? null : "agree" })}
-                              style={{
-                                background: fb.verdict === "agree" ? "rgba(34,197,94,0.2)" : "rgba(34,197,94,0.06)",
-                                border: `1px solid ${fb.verdict === "agree" ? "rgba(34,197,94,0.5)" : "rgba(34,197,94,0.2)"}`,
-                                borderRadius: 8, padding: "6px 14px", color: "#22c55e",
-                                fontSize: 12, cursor: fb.saving ? "not-allowed" : "pointer", opacity: fb.saving ? 0.5 : 1,
-                              }}
-                            >
-                              ✓ Agree
-                            </button>
-                            <button
-                              disabled={fb.saving}
-                              onClick={() => setFb({ verdict: fb.verdict === "disagree" ? null : "disagree" })}
-                              style={{
-                                background: fb.verdict === "disagree" ? "rgba(248,113,113,0.2)" : "rgba(248,113,113,0.06)",
-                                border: `1px solid ${fb.verdict === "disagree" ? "rgba(248,113,113,0.5)" : "rgba(248,113,113,0.2)"}`,
-                                borderRadius: 8, padding: "6px 14px", color: "#f87171",
-                                fontSize: 12, cursor: fb.saving ? "not-allowed" : "pointer", opacity: fb.saving ? 0.5 : 1,
-                              }}
-                            >
-                              ✗ Disagree
-                            </button>
-                            <input
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {/* Row 1: verdict buttons + Save + Cancel */}
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <button
+                                disabled={fb.saving}
+                                onClick={() => setFb({ verdict: fb.verdict === "agree" ? null : "agree" })}
+                                style={{
+                                  background: fb.verdict === "agree" ? "rgba(34,197,94,0.2)" : "rgba(34,197,94,0.06)",
+                                  border: `1px solid ${fb.verdict === "agree" ? "rgba(34,197,94,0.5)" : "rgba(34,197,94,0.2)"}`,
+                                  borderRadius: 8, padding: "6px 14px", color: "#22c55e",
+                                  fontSize: 12, cursor: fb.saving ? "not-allowed" : "pointer", opacity: fb.saving ? 0.5 : 1,
+                                }}
+                              >
+                                ✓ Agree
+                              </button>
+                              <button
+                                disabled={fb.saving}
+                                onClick={() => setFb({ verdict: fb.verdict === "disagree" ? null : "disagree" })}
+                                style={{
+                                  background: fb.verdict === "disagree" ? "rgba(248,113,113,0.2)" : "rgba(248,113,113,0.06)",
+                                  border: `1px solid ${fb.verdict === "disagree" ? "rgba(248,113,113,0.5)" : "rgba(248,113,113,0.2)"}`,
+                                  borderRadius: 8, padding: "6px 14px", color: "#f87171",
+                                  fontSize: 12, cursor: fb.saving ? "not-allowed" : "pointer", opacity: fb.saving ? 0.5 : 1,
+                                }}
+                              >
+                                ✗ Disagree
+                              </button>
+                              <button
+                                disabled={fb.saving}
+                                onClick={() => setFb({ verdict: fb.verdict === "flag" ? null : "flag" })}
+                                style={{
+                                  background: fb.verdict === "flag" ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.06)",
+                                  border: `1px solid ${fb.verdict === "flag" ? "rgba(245,158,11,0.5)" : "rgba(245,158,11,0.2)"}`,
+                                  borderRadius: 8, padding: "6px 14px", color: "#f59e0b",
+                                  fontSize: 12, cursor: fb.saving ? "not-allowed" : "pointer", opacity: fb.saving ? 0.5 : 1,
+                                }}
+                              >
+                                ⚑ Flag for Improvement
+                              </button>
+                              <button
+                                disabled={fb.saving || !fb.verdict}
+                                onClick={() => handleSave(fb)}
+                                style={{
+                                  background: fb.verdict && !fb.saving ? "#2563eb" : "rgba(37,99,235,0.3)",
+                                  border: "none", borderRadius: 8, padding: "6px 16px",
+                                  color: "#fff", fontSize: 12,
+                                  cursor: (fb.verdict && !fb.saving) ? "pointer" : "not-allowed",
+                                }}
+                              >
+                                {fb.saving ? "Saving…" : "Save"}
+                              </button>
+                              {fb.editing && (
+                                <button
+                                  disabled={fb.saving}
+                                  onClick={() => setFb({ editing: false, verdict: row.reviewer_verdict ?? null, notes: row.reviewer_notes ?? "" })}
+                                  style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 12px", color: "#8a8f9e", fontSize: 12, cursor: "pointer" }}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                            {/* Row 2: notes textarea */}
+                            <textarea
                               disabled={fb.saving}
                               value={fb.notes}
                               maxLength={1000}
                               placeholder="Add a note (optional)..."
                               onChange={e => setFb({ notes: e.target.value })}
                               style={{
-                                flex: 1, minWidth: 180, background: "#0e1018",
+                                width: "100%", background: "#0e1018",
                                 border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8,
                                 padding: "6px 10px", color: "#c0c4d0", fontSize: 12,
                                 opacity: fb.saving ? 0.5 : 1,
+                                resize: "vertical",
+                                minHeight: "80px",
+                                boxSizing: "border-box",
                               }}
                             />
-                            <button
-                              disabled={fb.saving || !fb.verdict}
-                              onClick={() => handleSave(fb)}
-                              style={{
-                                background: fb.verdict && !fb.saving ? "#2563eb" : "rgba(37,99,235,0.3)",
-                                border: "none", borderRadius: 8, padding: "6px 16px",
-                                color: "#fff", fontSize: 12,
-                                cursor: (fb.verdict && !fb.saving) ? "pointer" : "not-allowed",
-                              }}
-                            >
-                              {fb.saving ? "Saving…" : "Save"}
-                            </button>
-                            {fb.editing && (
-                              <button
-                                disabled={fb.saving}
-                                onClick={() => setFb({ editing: false, verdict: row.reviewer_verdict ?? null, notes: row.reviewer_notes ?? "" })}
-                                style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 12px", color: "#8a8f9e", fontSize: 12, cursor: "pointer" }}
-                              >
-                                Cancel
-                              </button>
+                            {fb.error && (
+                              <p style={{ color: "#f87171", fontSize: 11, margin: "2px 0 0" }}>{fb.error}</p>
                             )}
                           </div>
-                          {fb.error && (
-                            <p style={{ color: "#f87171", fontSize: 11, margin: "6px 0 0" }}>{fb.error}</p>
-                          )}
                         </div>
                       );
                     })()}

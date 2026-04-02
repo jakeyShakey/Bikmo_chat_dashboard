@@ -68,7 +68,7 @@ supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoi
 
 - `chat_responses` — one row per processed conversation (`conversation_id`, `messages_processed`, `escalated`, `created_at`)
 - `feedback_responses` — user thumbs up/down (`feedback: boolean`, `conversation_id`, `created_at`)
-- `compliance_audits` — AI compliance checks (`compliant` column aliased as `status` in queries, `confidence` 1–10 int, `flags[]`, `reasoning`, `audited_at`)
+- `compliance_audits` — AI compliance checks (`compliant` column aliased as `status` in queries, `confidence` 1–10 int, `flags[]`, `reasoning`, `audited_at`). Also has human reviewer columns: `reviewer_verdict` (`'agree'`/`'disagree'`/`NULL`), `reviewer_notes`, `reviewed_by` (email), `reviewed_at`
 - `escalations` — escalated convos with Zendesk data (`zendesk_ticket_id`, `customer_name`, `customer_email`, `message_count_at_escalation`, `escalated_at`)
 
 ## Security Model
@@ -89,6 +89,8 @@ supabase/functions/dashboard-stats/index.ts   # Single edge function, all endpoi
 - **Supabase tokens are ES256, not HS256**: Newer Supabase projects issue JWTs signed with ES256 (elliptic curve). Do not attempt to verify them with `SUPABASE_JWT_SECRET` (HS256). Always verify via `adminClient.auth.getUser(token)` — this calls the Auth API directly and handles ES256 correctly.
 - **Edge function "Verify JWT" platform toggle must be OFF**: The Supabase dashboard has a per-function "Verify JWT" toggle (Edge Functions → function → Settings). This must be disabled when doing auth verification in code — if both are on, Supabase rejects the request at the platform level before your code runs, resulting in a 401 that looks like your code's fault but isn't.
 - **`onAuthStateChange` not `getSession()` on mount**: Using `getSession()` then `onAuthStateChange` separately creates a race condition — `loading` gets set to `false` before the OAuth callback hash is processed, briefly rendering the login page and losing the session. Use `onAuthStateChange` alone; it fires immediately with the current session on mount.
+- **`AuditTable` feedback state uses a `saved` flag, not just `verdict`**: `isReviewed` (which hides the form and shows the verdict chip) is driven by `feedbackState[id].saved`, not `feedbackState[id].verdict != null`. `saved` is only set to `true` after a successful POST to `audit-feedback`. This prevents the form disappearing when the user clicks Agree/Disagree before hitting Save. Do not collapse these back into a single `verdict != null` check.
+- **Edge function has one POST endpoint**: `audit-feedback` is the only mutation endpoint — all others are GET. POST endpoints must parse `req.json()` for the body and respond 405 for non-POST methods. The `user` object (from JWT verification at the top of the handler) provides `user.email` for recording who submitted the feedback.
 
 ## Coding Conventions
 
